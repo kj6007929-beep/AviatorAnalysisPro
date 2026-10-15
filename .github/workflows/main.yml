@@ -10,6 +10,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,10 +24,11 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: |
-            platform-tools
-            platforms;android-35
-            build-tools;35.0.0
+          packages: 'platform-tools'
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Extract Android project ZIP
         shell: bash
@@ -34,24 +36,26 @@ jobs:
           set -e
           mkdir -p extracted
           ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+
           if [ -z "$ZIP_FILE" ]; then
             echo "ERROR: Project ZIP not found"
             exit 1
           fi
+
           unzip -q "$ZIP_FILE" -d extracted
+
           PROJECT_FILE=$(find extracted -type f -name "settings.gradle.kts" | head -n 1)
+
           if [ -z "$PROJECT_FILE" ]; then
-            echo "ERROR: settings.gradle.kts not found in ZIP"
+            echo "ERROR: settings.gradle.kts not found"
             exit 1
           fi
+
           PROJECT_DIR=$(dirname "$PROJECT_FILE")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Android project found: $PROJECT_DIR"
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
-
-      - name: Align Java and Kotlin JVM targets
+      - name: Align Java and Kotlin targets
         shell: bash
         run: |
           set -e
@@ -60,21 +64,27 @@ jobs:
           from pathlib import Path
 
           project = Path(os.environ["PROJECT_DIR"])
-          file = project / "app" / "build.gradle.kts"
-          if not file.exists():
-              raise SystemExit(f"Gradle file not found: {file}")
+          files = [
+              project / "app" / "build.gradle.kts",
+              project / "build.gradle.kts"
+          ]
 
-          text = file.read_text()
-          text = text.replace(
-              "JavaVersion.VERSION_1_8",
-              "JavaVersion.VERSION_17"
-          )
-          text = text.replace(
-              'jvmTarget = "1.8"',
-              'jvmTarget = "17"'
-          )
-          file.write_text(text)
-          print("JVM target adjustment completed")
+          for file in files:
+              if not file.exists():
+                  continue
+
+              text = file.read_text()
+              text = text.replace(
+                  "JavaVersion.VERSION_1_8",
+                  "JavaVersion.VERSION_17"
+              )
+              text = text.replace(
+                  'jvmTarget = "1.8"',
+                  'jvmTarget = "17"'
+              )
+              file.write_text(text)
+
+          print("Java/Kotlin target adjustment completed")
           PY
 
       - name: Build debug APK
@@ -82,15 +92,16 @@ jobs:
         run: |
           set -e
           cd "$PROJECT_DIR"
+
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
-            ./gradlew assembleDebug
+            ./gradlew --no-daemon assembleDebug
           else
             cd "$RUNNER_TEMP"
             curl -fsSLo gradle.zip https://services.gradle.org/distributions/gradle-8.9-bin.zip
             unzip -q gradle.zip
             cd "$GITHUB_WORKSPACE/$PROJECT_DIR"
-            "$RUNNER_TEMP/gradle-8.9/bin/gradle" assembleDebug
+            "$RUNNER_TEMP/gradle-8.9/bin/gradle" --no-daemon assembleDebug
           fi
 
       - name: Upload APK
@@ -100,4 +111,3 @@ jobs:
           name: Aviator-Analysis-Pro-APK
           path: extracted/**/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          
