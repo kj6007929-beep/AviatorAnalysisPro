@@ -50,7 +50,27 @@ jobs:
         run: |
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
           yes | sdkmanager --licenses
+name: Align Java and Kotlin JVM targets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
 
+          project = Path(os.environ["PROJECT_DIR"])
+          file = project / "app" / "build.gradle.kts"
+          text = file.read_text()
+          text = text.replace(
+              "JavaVersion.VERSION_1_8",
+              "JavaVersion.VERSION_17"
+          )
+          text = text.replace(
+              'jvmTarget = "1.8"',
+              'jvmTarget = "17"'
+          )
+          file.write_text(text)
+          print("Java/Kotlin target alignment applied")
+          PY
       - name: Build debug APK
         shell: bash
         run: |
